@@ -155,6 +155,13 @@ tr:hover td.sticky-col{background:#fafaf8;}
 /* ── Search ── */
 .search-input{padding:8px 12px;border-radius:8px;border:1px solid var(--border);font-family:inherit;font-size:0.82rem;background:#fff;min-width:180px;}
 
+/* ── Defector / eligibility ── */
+.defector-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:var(--danger-light);color:var(--danger);font-size:0.72rem;font-weight:700;}
+.status-pill{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:var(--accent-light);color:var(--accent);font-size:0.72rem;font-weight:700;margin-top:4px;margin-right:4px;}
+.status-pill.warn{background:var(--accent2-light);color:var(--accent2);}
+.defector-note{width:100%;margin-top:6px;padding:7px 8px;border:1px solid #f2d7a3;border-radius:8px;background:#fffdf7;font-size:0.75rem;font-family:inherit;min-height:58px;}
+.defector-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+
 /* ── Loan summary cards ── */
 .loan-stats{max-width:1400px;margin:0 auto 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;}
 
@@ -397,6 +404,7 @@ tr:hover td.sticky-col{background:#fafaf8;}
 
 <div class="toast" id="toast"></div>
 
+<script src="sacco-logic.js"></script>
 <script>
 let state = {
   groupName:'',
@@ -421,20 +429,79 @@ function load(){
   if(!state.savings) state.savings={};
   if(!state.payoutOrder) state.payoutOrder=[];
   if(!state.loans) state.loans=[];
+  state.members=(state.members||[]).map(m=>({
+    ...m,
+    isDefector:Boolean(m.isDefector),
+    defectionNote:m.defectionNote||''
+  }));
+  state.columns=(state.columns||[]).map(c=>({
+    ...c,
+    id:c.id||'c'+nextCid++,
+    defaultAmount:Number(c.defaultAmount)||0
+  }));
+  Object.keys(state.payments||{}).forEach(mid=>{
+    Object.keys(state.payments[mid]||{}).forEach(cid=>{
+      const p=state.payments[mid][cid]||{};
+      state.payments[mid][cid]={
+        paid:Boolean(p.paid),
+        amount:Number(p.amount)||0,
+        missed:Boolean(p.missed)
+      };
+    });
+  });
+  refreshMemberDefectors();
 }
 
 function fmt(n){return Number(n||0).toLocaleString('en-UG');}
 function esc(s){return String(s||'').replace(/</g,'&lt;');}
 
+function ensureMemberMeta(member){
+  if(!member) return member;
+  member.isDefector=Boolean(member.isDefector);
+  member.defectionNote=member.defectionNote||'';
+  return member;
+}
+
 function getP(mid,cid){
   if(!state.payments[mid]) state.payments[mid]={};
   if(!state.payments[mid][cid]){
     const col=state.columns.find(c=>c.id===cid);
-    state.payments[mid][cid]={paid:false,amount:col?col.defaultAmount:0};
+    state.payments[mid][cid]={paid:false,amount:col?col.defaultAmount:0,missed:false};
   }
+  if(typeof state.payments[mid][cid].paid!=='boolean') state.payments[mid][cid].paid=Boolean(state.payments[mid][cid].paid);
+  if(typeof state.payments[mid][cid].missed!=='boolean') state.payments[mid][cid].missed=false;
   return state.payments[mid][cid];
 }
 function getSavings(mid){return parseFloat(state.savings[mid]||0);}
+
+function refreshMemberDefectors(memberId){
+  const members=memberId?state.members.filter(m=>m.id===memberId):state.members;
+  members.forEach(m=>{
+    ensureMemberMeta(m);
+    const hasMissed=state.columns.some(c=>{
+      const p=getP(m.id,c.id);
+      return p && p.missed===true;
+    });
+    m.isDefector=hasMissed || Boolean(m.isDefector && hasMissed);
+  });
+  save();
+}
+
+function setDefectionNote(mid,val){
+  const member=state.members.find(m=>m.id===mid);
+  if(!member) return;
+  member.defectionNote=val||'';
+  save();renderTable();
+}
+
+function toggleDefector(mid){
+  const member=state.members.find(m=>m.id===mid);
+  if(!member) return;
+  member.isDefector=!member.isDefector;
+  if(!member.isDefector) member.defectionNote='';
+  else if(!member.defectionNote) member.defectionNote='Missed payment.';
+  save();renderTable();renderPayout();renderLoans();
+}
 
 function switchTab(name){
   document.querySelectorAll('.tab-btn').forEach((b,i)=>{
@@ -466,6 +533,8 @@ function renderTable(){
   }
 
   body.innerHTML=members.map(m=>{
+    const member=ensureMemberMeta(m);
+    const eligibility=SaccoLogic.getMemberEligibility(member,state.columns,state.payments,state.savings);
     let rowTotal=0;
     const cells=state.columns.map(c=>{
       const p=getP(m.id,c.id);
@@ -479,11 +548,21 @@ function renderTable(){
     }).join('');
     return `<tr>
       <td class="sticky-col">
-        <strong>${esc(m.name)}</strong><br>
-        <small style="color:var(--muted);">${esc(m.phone)}</small><br>
-        <div style="margin-top:4px;display:flex;gap:4px;">
-          <button class="btn-icon" onclick="openEditMember('${m.id}')">✏️</button>
-          <button class="btn-icon" onclick="removeMember('${m.id}')">🗑</button>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div>
+            <strong>${esc(member.name)}</strong><br>
+            <small style="color:var(--muted);">${esc(member.phone)}</small>
+          </div>
+          <div class="defector-actions">
+            <button class="btn btn-sm ${member.isDefector?'btn-danger':'btn-blue'}" onclick="toggleDefector('${member.id}')">${member.isDefector?'Undo Defector':'Flag Defector'}</button>
+            <button class="btn-icon" onclick="openEditMember('${member.id}')">✏️</button>
+            <button class="btn-icon" onclick="removeMember('${member.id}')">🗑</button>
+          </div>
+          <div>
+            ${member.isDefector?'<span class="defector-badge">⚠ Defector</span>':'<span class="status-pill">Active</span>'}
+            <span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>
+          </div>
+          ${member.isDefector?`<textarea class="defector-note" onchange="setDefectionNote('${member.id}',this.value)">${esc(member.defectionNote||'')}</textarea>`:''}
         </div>
       </td>
       ${cells}
@@ -549,9 +628,10 @@ function renderPayout(){
     const m=state.members.find(x=>x.id===id);
     if(!m) return '';
     const col=state.columns[i];
+    const eligibility=SaccoLogic.getMemberEligibility(m,state.columns,state.payments,state.savings);
     return `<div class="payout-row">
       <div class="payout-num">${i+1}</div>
-      <div style="flex:1"><strong>${esc(m.name)}</strong></div>
+      <div style="flex:1"><strong>${esc(m.name)}</strong>${m.isDefector?'<div class="defector-badge" style="margin-top:4px;">⚠ Defector</div>':''}<div style="font-size:0.72rem;color:var(--muted);margin-top:2px;">${eligibility.label}</div></div>
       <div style="color:var(--muted);font-size:0.78rem;">${col?esc(col.name):'Week '+(i+1)}</div>
     </div>`;
   }).join('');
@@ -564,9 +644,10 @@ function renderPayout(){
   tbody.innerHTML=state.payoutOrder.map((id,i)=>{
     const m=state.members.find(x=>x.id===id);
     if(!m) return '';
+    const eligibility=SaccoLogic.getMemberEligibility(m,state.columns,state.payments,state.savings);
     return `<tr>
       <td><span class="order-badge">${i+1}</span></td>
-      <td><strong>${esc(m.name)}</strong></td>
+      <td><strong>${esc(m.name)}</strong><br><span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>${m.isDefector?'<br><span class="defector-badge">Defector</span>':''}</td>
       <td style="color:var(--muted);">${esc(m.phone)}</td>
       <td>
         ${i>0?`<button class="btn btn-sm btn-blue" onclick="moveOrder('${id}',-1)">▲ Up</button>`:''}
@@ -610,6 +691,12 @@ function calcPayout(){
   const recipientId=state.payoutOrder[weekIdx];
   const recipient=recipientId?state.members.find(m=>m.id===recipientId):null;
   const recipSavings=recipient?getSavings(recipient.id):0;
+  const eligibility=SaccoLogic.getPayoutEligibility(recipient,state.columns,state.payments,state.savings,weekIdx);
+
+  if(!eligibility.eligible){
+    res.innerHTML=`<div style="display:grid;gap:8px;"><div style="color:var(--danger);font-weight:700;">Payout blocked</div><div style="color:var(--muted);font-size:0.8rem;">${esc(eligibility.reason||'This member is not eligible for payout right now.')}</div></div>`;
+    return;
+  }
 
   const payout=collected-totalSavings;
   const recipPayout=payout-recipSavings;
@@ -663,12 +750,13 @@ function renderLoans(){
   body.innerHTML=loans.map(l=>{
     const m=state.members.find(x=>x.id===l.memberId);
     const balance=l.amount-(l.repaid||0);
+    const eligibility=m?SaccoLogic.getMemberEligibility(m,state.columns,state.payments,state.savings):{eligible:false,label:'Unknown'};
     let status,statusClass;
     if(balance<=0){status='Repaid';statusClass='repaid';}
     else if(l.repaid>0){status='Partial';statusClass='partial';}
     else{status='Active';statusClass='active';}
     return `<tr>
-      <td><strong>${m?esc(m.name):'Unknown'}</strong><br><small style="color:var(--muted);">${m?esc(m.phone):''}</small></td>
+      <td><strong>${m?esc(m.name):'Unknown'}</strong><br><small style="color:var(--muted);">${m?esc(m.phone):''}</small><br><span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>${m&&m.isDefector?'<br><span class="defector-badge">Defector</span>':''}</td>
       <td style="font-weight:700;">UGX ${fmt(l.amount)}</td>
       <td>${l.date||'—'}</td>
       <td>${l.due||'—'}</td>
@@ -700,6 +788,12 @@ function saveLoan(){
   const mid=document.getElementById('loanMember').value;
   const amount=parseFloat(document.getElementById('loanAmount').value)||0;
   if(!mid||!amount) return alert('Member and amount required.');
+  const member=state.members.find(m=>m.id===mid);
+  const eligibility=SaccoLogic.getMemberEligibility(member,state.columns,state.payments,state.savings);
+  if(!eligibility.eligible){
+    alert(`${member.name} is not eligible for a new loan right now: ${eligibility.reason}`);
+    return;
+  }
   state.loans.push({
     id:'l'+nextLid++,
     memberId:mid,
@@ -737,7 +831,22 @@ function removeLoan(id){
   }
 }
 
-function togglePaid(mid,cid,checked){getP(mid,cid).paid=checked;save();renderTable();}
+function togglePaid(mid,cid,checked){
+  const payment=getP(mid,cid);
+  payment.paid=checked;
+  payment.missed=!checked;
+  const member=state.members.find(m=>m.id===mid);
+  if(member){
+    if(!checked){
+      member.isDefector=true;
+      if(!member.defectionNote) member.defectionNote='Missed payment.';
+    } else {
+      const hasMissed=state.columns.some(c=>{const p=getP(mid,c.id); return p && p.missed===true;});
+      member.isDefector=hasMissed;
+    }
+  }
+  save();renderTable();
+}
 function setAmt(mid,cid,val){getP(mid,cid).amount=parseFloat(val)||0;save();renderTable();}
 
 function saveMember(){
@@ -746,9 +855,9 @@ function saveMember(){
   if(!name) return alert('Name is required.');
   if(editingMemberId){
     const m=state.members.find(x=>x.id===editingMemberId);
-    m.name=name;m.phone=phone;
+    m.name=name;m.phone=phone;ensureMemberMeta(m);
   } else {
-    state.members.push({id:'m'+nextMid++,name,phone});
+    state.members.push({id:'m'+nextMid++,name,phone,isDefector:false,defectionNote:''});
   }
   closeModal('memberModal');save();renderTable();toast('Member saved');
 }
@@ -776,9 +885,9 @@ function generateWeeks(){
 }
 
 function exportCSV(){
-  let csv='Name,Phone,Weekly Savings,'+state.columns.map(c=>c.name).join(',')+',Total\n';
+  let csv='Name,Phone,Defector,Defection Note,Weekly Savings,'+state.columns.map(c=>c.name).join(',')+',Total\n';
   state.members.forEach(m=>{
-    let row=`${m.name},${m.phone},${getSavings(m.id)}`;
+    let row=`${m.name},${m.phone},${m.isDefector?1:0},${(m.defectionNote||'').replace(/\n/g,' ')} ,${getSavings(m.id)}`;
     let total=0;
     state.columns.forEach(c=>{
       const p=getP(m.id,c.id);
