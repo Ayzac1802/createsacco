@@ -285,7 +285,7 @@ tr:hover td.sticky-col{background:#fafaf8;}
         <thead>
           <tr>
             <th>Order</th>
-            <th>Member</th>
+            <th class="sticky-col">Member</th>
             <th>Phone</th>
             <th>Move</th>
           </tr>
@@ -311,7 +311,7 @@ tr:hover td.sticky-col{background:#fafaf8;}
     <table style="width:100%;">
       <thead>
         <tr>
-          <th>Member</th>
+          <th class="sticky-col">Member</th>
           <th>Missed Weeks</th>
           <th>Status</th>
           <th>Note</th>
@@ -340,7 +340,7 @@ tr:hover td.sticky-col{background:#fafaf8;}
     <table style="width:100%;">
       <thead>
         <tr>
-          <th>Borrower</th>
+          <th class="sticky-col">Borrower</th>
           <th>Amount</th>
           <th>Date</th>
           <th>Due Date</th>
@@ -642,7 +642,7 @@ function renderDefectors(){
   body.innerHTML=active.map(m=>{
     const status=SaccoLogic.getDefectorStatus(m,state.columns,state.payments);
     return `<tr>
-      <td><strong>${esc(m.name)}</strong><br><small style="color:var(--muted);">${esc(m.phone)}</small></td>
+      <td class="sticky-col"><strong>${esc(m.name)}</strong><br><small style="color:var(--muted);">${esc(m.phone)}</small></td>
       <td style="font-weight:700;color:var(--danger);">${status.missedCount}</td>
       <td><span class="defector-badge">⚠ Defector</span></td>
       <td><textarea id="defector-note-${m.id}" class="defector-note" style="min-height:70px;">${esc(m.defectionNote||'')}</textarea></td>
@@ -745,7 +745,7 @@ function renderPayout(){
     const eligibility=SaccoLogic.getMemberEligibility(m,state.columns,state.payments,state.savings);
     return `<tr>
       <td><span class="order-badge">${i+1}</span></td>
-      <td><strong>${esc(m.name)}</strong><br><span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>${m.isDefector?'<br><span class="defector-badge">Defector</span>':''}</td>
+      <td class="sticky-col"><strong>${esc(m.name)}</strong><br><span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>${m.isDefector?'<br><span class="defector-badge">Defector</span>':''}</td>
       <td style="color:var(--muted);">${esc(m.phone)}</td>
       <td>
         ${i>0?`<button class="btn btn-sm btn-blue" onclick="moveOrder('${id}',-1)">▲ Up</button>`:''}
@@ -854,7 +854,7 @@ function renderLoans(){
     else if(l.repaid>0){status='Partial';statusClass='partial';}
     else{status='Active';statusClass='active';}
     return `<tr>
-      <td><strong>${m?esc(m.name):'Unknown'}</strong><br><small style="color:var(--muted);">${m?esc(m.phone):''}</small><br><span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>${m&&m.isDefector?'<br><span class="defector-badge">Defector</span>':''}</td>
+      <td class="sticky-col"><strong>${m?esc(m.name):'Unknown'}</strong><br><small style="color:var(--muted);">${m?esc(m.phone):''}</small><br><span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>${m&&m.isDefector?'<br><span class="defector-badge">Defector</span>':''}</td>
       <td style="font-weight:700;">UGX ${fmt(l.amount)}</td>
       <td>${l.date||'—'}</td>
       <td>${l.due||'—'}</td>
