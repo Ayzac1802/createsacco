@@ -138,6 +138,8 @@ tr:hover td.sticky-col{background:#fafaf8;}
 .payout-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f0ece4;font-size:0.84rem;}
 .payout-row:last-child{border-bottom:none;}
 .payout-num{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;}
+.payout-meta{font-size:0.74rem;color:var(--muted);margin-top:4px;}
+.payout-action-bar{margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:var(--purple-light);border:1px solid #d8c6f2;border-radius:8px;}
 
 /* ── Modals ── */
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(3px);z-index:100;align-items:center;justify-content:center;padding:24px;}
@@ -275,6 +277,7 @@ tr:hover td.sticky-col{background:#fafaf8;}
           </select>
         </div>
         <div id="payoutResult" style="font-size:0.83rem;color:var(--muted);">Select a week to calculate.</div>
+        <div class="payout-action-bar" id="payoutActionBar" style="display:none;"></div>
       </div>
     </div>
   </div>
@@ -441,7 +444,8 @@ let state = {
   payments:{},
   savings:{},
   payoutOrder:[],
-  loans:[]
+  loans:[],
+  deferredPayouts:{}
 };
 let editingMemberId=null, editingLoanId=null, repayingLoanId=null;
 let nextMid=1, nextCid=1, nextLid=1;
@@ -457,6 +461,7 @@ function load(){
   if(!state.savings) state.savings={};
   if(!state.payoutOrder) state.payoutOrder=[];
   if(!state.loans) state.loans=[];
+  if(!state.deferredPayouts) state.deferredPayouts={};
   state.members=(state.members||[]).map(m=>({
     ...m,
     isDefector:Boolean(m.isDefector),
@@ -502,6 +507,7 @@ function getP(mid,cid){
   return state.payments[mid][cid];
 }
 function getSavings(mid){return parseFloat(state.savings[mid]||0);}
+function getDeferredPayout(mid){return parseFloat(state.deferredPayouts[mid]||0);}
 
 function refreshMemberDefectors(memberId){
   const members=memberId?state.members.filter(m=>m.id===memberId):state.members;
@@ -727,9 +733,10 @@ function renderPayout(){
     if(!m) return '';
     const col=state.columns[i];
     const eligibility=SaccoLogic.getMemberEligibility(m,state.columns,state.payments,state.savings);
+    const deferred=getDeferredPayout(m.id);
     return `<div class="payout-row">
       <div class="payout-num">${i+1}</div>
-      <div style="flex:1"><strong>${esc(m.name)}</strong>${m.isDefector?'<div class="defector-badge" style="margin-top:4px;">⚠ Defector</div>':''}<div style="font-size:0.72rem;color:var(--muted);margin-top:2px;">${eligibility.label}</div></div>
+      <div style="flex:1"><strong>${esc(m.name)}</strong>${m.isDefector?'<div class="defector-badge" style="margin-top:4px;">⚠ Defector</div>':''}<div class="payout-meta">${eligibility.label}${deferred>0?` • Deferred: UGX ${fmt(deferred)}`:''}</div></div>
       <div style="color:var(--muted);font-size:0.78rem;">${col?esc(col.name):'Week '+(i+1)}</div>
     </div>`;
   }).join('');
@@ -743,9 +750,10 @@ function renderPayout(){
     const m=state.members.find(x=>x.id===id);
     if(!m) return '';
     const eligibility=SaccoLogic.getMemberEligibility(m,state.columns,state.payments,state.savings);
+    const deferred=getDeferredPayout(m.id);
     return `<tr>
       <td><span class="order-badge">${i+1}</span></td>
-      <td class="sticky-col"><strong>${esc(m.name)}</strong><br><span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>${m.isDefector?'<br><span class="defector-badge">Defector</span>':''}</td>
+      <td class="sticky-col"><strong>${esc(m.name)}</strong><br><span class="status-pill ${eligibility.eligible?'':'warn'}">${eligibility.label}</span>${m.isDefector?'<br><span class="defector-badge">Defector</span>':''}${deferred>0?`<br><span class="status-pill" style="background:var(--purple-light);color:var(--purple);">Deferred UGX ${fmt(deferred)}</span>`:''}</td>
       <td style="color:var(--muted);">${esc(m.phone)}</td>
       <td>
         ${i>0?`<button class="btn btn-sm btn-blue" onclick="moveOrder('${id}',-1)">▲ Up</button>`:''}
@@ -770,10 +778,20 @@ function clearOrder(){
   state.payoutOrder=[];save();renderPayout();
 }
 
+function deferPayout(mid, amount){
+  const value=parseFloat(amount)||0;
+  if(!mid) return;
+  if(value<=0){state.deferredPayouts[mid]=0; save(); renderPayout(); calcPayout(); toast('Deferred payout cleared'); return;}
+  state.deferredPayouts[mid]=value;
+  state.savings[mid]=(getSavings(mid)||0)+value;
+  save(); renderPayout(); calcPayout(); toast('Payout deferred to savings');
+}
+
 function calcPayout(){
   const weekIdx=parseInt(document.getElementById('payoutWeekSelect').value);
   const res=document.getElementById('payoutResult');
-  if(isNaN(weekIdx)){res.innerHTML='<p style="color:var(--muted);">Select a week.</p>';return;}
+  const bar=document.getElementById('payoutActionBar');
+  if(isNaN(weekIdx)){res.innerHTML='<p style="color:var(--muted);">Select a week.</p>';bar.style.display='none';return;}
 
   const col=state.columns[weekIdx];
   if(!col){res.innerHTML='<p style="color:var(--muted);">Week not found.</p>';return;}
@@ -789,15 +807,18 @@ function calcPayout(){
   const recipientId=state.payoutOrder[weekIdx];
   const recipient=recipientId?state.members.find(m=>m.id===recipientId):null;
   const recipSavings=recipient?getSavings(recipient.id):0;
+  const deferredAmount=recipient?getDeferredPayout(recipient.id):0;
   const eligibility=SaccoLogic.getPayoutEligibility(recipient,state.columns,state.payments,state.savings,weekIdx);
 
   if(!eligibility.eligible){
     res.innerHTML=`<div style="display:grid;gap:8px;"><div style="color:var(--danger);font-weight:700;">Payout blocked</div><div style="color:var(--muted);font-size:0.8rem;">${esc(eligibility.reason||'This member is not eligible for payout right now.')}</div></div>`;
+    bar.style.display='none';
     return;
   }
 
   const payout=collected-totalSavings;
-  const recipPayout=payout-recipSavings;
+  const recipPayout=Math.max(0,payout-recipSavings-deferredAmount);
+  const deferredChoice=deferredAmount>0?`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0ece4;"><span style="color:var(--muted);">Deferred to savings</span><span style="color:var(--purple);">− UGX ${fmt(deferredAmount)}</span></div>`:'';
 
   res.innerHTML=`
     <div style="display:grid;gap:8px;">
@@ -813,11 +834,19 @@ function calcPayout(){
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0ece4;">
         <span style="color:var(--muted);">Recipient's own savings</span><span style="color:var(--accent2);">− UGX ${fmt(recipSavings)}</span>
       </div>
+      ${deferredChoice}
       <div style="display:flex;justify-content:space-between;padding:8px 0;background:var(--accent-light);border-radius:8px;padding:10px 12px;margin-top:4px;">
         <span style="font-weight:700;">Recipient: ${recipient?esc(recipient.name):'<em>Not assigned</em>'}</span>
         <strong style="color:var(--accent);font-size:1.05rem;">UGX ${fmt(recipPayout)}</strong>
       </div>
     </div>`;
+
+  if(recipient){
+    bar.innerHTML=`<div style="font-size:0.78rem;color:var(--purple);font-weight:700;">${esc(recipient.name)} can defer part of this payout into savings.</div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><input id="deferAmount" type="number" min="0" placeholder="UGX" style="width:110px;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:0.8rem;" /><button class="btn btn-sm btn-purple" onclick="deferPayout('${recipient.id}', document.getElementById('deferAmount').value)">Save to Savings</button></div>`;
+    bar.style.display='flex';
+  } else {
+    bar.style.display='none';
+  }
 }
 
 function renderLoans(){
