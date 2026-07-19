@@ -1,13 +1,24 @@
 (function (root) {
-  function isMemberDefector(member, columns, payments) {
-    if (!member) return false;
-    if (member.isDefector) return true;
-    if (!Array.isArray(columns) || !columns.length) return false;
+  function getDefectorStatus(member, columns, payments) {
+    if (!member) {
+      return { isDefector: false, missedCount: 0, resolved: false };
+    }
 
-    return columns.some((column) => {
+    const missedCount = (Array.isArray(columns) ? columns : []).reduce((count, column) => {
       const payment = payments?.[member.id]?.[column.id];
-      return Boolean(payment && payment.paid === false);
-    });
+      return count + (payment && payment.paid === false ? 1 : 0);
+    }, 0);
+
+    const resolved = Boolean(member.defectorResolved);
+    return {
+      isDefector: missedCount > 0 && !resolved,
+      missedCount,
+      resolved
+    };
+  }
+
+  function isMemberDefector(member, columns, payments) {
+    return getDefectorStatus(member, columns, payments).isDefector;
   }
 
   function getMemberEligibility(member, columns, payments, savings) {
@@ -15,8 +26,8 @@
       return { eligible: false, label: 'No member', reason: 'No member was selected.' };
     }
 
-    const defector = isMemberDefector(member, columns, payments);
-    if (defector) {
+    const defectorStatus = getDefectorStatus(member, columns, payments);
+    if (defectorStatus.isDefector) {
       return {
         eligible: false,
         label: 'Defector',
@@ -72,6 +83,7 @@
 
   const api = {
     isMemberDefector,
+    getDefectorStatus,
     getMemberEligibility,
     getPayoutEligibility
   };

@@ -191,6 +191,7 @@ tr:hover td.sticky-col{background:#fafaf8;}
   <button class="tab-btn active" onclick="switchTab('payments')">💳 Payments</button>
   <button class="tab-btn" onclick="switchTab('savings')">💰 Savings</button>
   <button class="tab-btn" onclick="switchTab('payout')">🏆 Payout Order</button>
+  <button class="tab-btn" onclick="switchTab('defectors')">🚩 Defectors</button>
   <button class="tab-btn" onclick="switchTab('loans')">🤝 Loans</button>
 </div>
 
@@ -292,6 +293,33 @@ tr:hover td.sticky-col{background:#fafaf8;}
         <tbody id="orderTableBody"></tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<div id="tab-defectors" class="tab-pane">
+  <div class="stats-bar">
+    <div class="stat-card red"><div class="stat-label">Active Defectors</div><div class="stat-value" id="statDefectorCount">0</div></div>
+    <div class="stat-card gold"><div class="stat-label">Missed Weeks</div><div class="stat-value" id="statDefectorMissed">0</div></div>
+    <div class="stat-card blue"><div class="stat-label">Notes Pending</div><div class="stat-value" id="statDefectorNotes">0</div></div>
+  </div>
+
+  <div class="loans-header">
+    <button class="btn btn-danger" onclick="clearAllDefectors()">Resolve All</button>
+  </div>
+
+  <div class="loans-table-wrap">
+    <table style="width:100%;">
+      <thead>
+        <tr>
+          <th>Member</th>
+          <th>Missed Weeks</th>
+          <th>Status</th>
+          <th>Note</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="defectorsBody"></tbody>
+    </table>
   </div>
 </div>
 
@@ -432,7 +460,8 @@ function load(){
   state.members=(state.members||[]).map(m=>({
     ...m,
     isDefector:Boolean(m.isDefector),
-    defectionNote:m.defectionNote||''
+    defectionNote:m.defectionNote||'',
+    defectorResolved:Boolean(m.defectorResolved)
   }));
   state.columns=(state.columns||[]).map(c=>({
     ...c,
@@ -482,7 +511,11 @@ function refreshMemberDefectors(memberId){
       const p=getP(m.id,c.id);
       return p && p.missed===true;
     });
-    m.isDefector=hasMissed || Boolean(m.isDefector && hasMissed);
+    if (m.defectorResolved) {
+      m.isDefector=false;
+      return;
+    }
+    m.isDefector=hasMissed;
   });
   save();
 }
@@ -491,27 +524,30 @@ function setDefectionNote(mid,val){
   const member=state.members.find(m=>m.id===mid);
   if(!member) return;
   member.defectionNote=val||'';
-  save();renderTable();
+  member.defectorResolved=false;
+  save();renderTable();renderDefectors();
 }
 
 function toggleDefector(mid){
   const member=state.members.find(m=>m.id===mid);
   if(!member) return;
-  member.isDefector=!member.isDefector;
-  if(!member.isDefector) member.defectionNote='';
-  else if(!member.defectionNote) member.defectionNote='Missed payment.';
-  save();renderTable();renderPayout();renderLoans();
+  member.defectorResolved=!member.defectorResolved;
+  member.isDefector=!member.defectorResolved;
+  if(!member.defectorResolved && !member.defectionNote) member.defectionNote='Missed payment.';
+  if(member.defectorResolved) member.defectionNote=member.defectionNote||'Resolved.';
+  save();renderTable();renderPayout();renderLoans();renderDefectors();
 }
 
 function switchTab(name){
   document.querySelectorAll('.tab-btn').forEach((b,i)=>{
-    const names=['payments','savings','payout','loans'];
+    const names=['payments','savings','payout','defectors','loans'];
     b.classList.toggle('active',names[i]===name);
   });
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='savings') renderSavings();
   if(name==='payout') renderPayout();
+  if(name==='defectors') renderDefectors();
   if(name==='loans') renderLoans();
 }
 
@@ -584,6 +620,68 @@ function renderStats(){
   document.getElementById('statTotal').innerText='UGX '+fmt(total);
   document.getElementById('statWeeks').innerText=state.columns.length;
   document.getElementById('statUnpaid').innerText=unpaid;
+}
+
+function renderDefectors(){
+  const active=state.members.filter(m=>{
+    const status=SaccoLogic.getDefectorStatus(m,state.columns,state.payments);
+    return status.isDefector;
+  });
+  const missedCount=active.reduce((sum,m)=>sum+SaccoLogic.getDefectorStatus(m,state.columns,state.payments).missedCount,0);
+  const noteCount=active.filter(m=>String(m.defectionNote||'').trim()).length;
+  document.getElementById('statDefectorCount').innerText=active.length;
+  document.getElementById('statDefectorMissed').innerText=missedCount;
+  document.getElementById('statDefectorNotes').innerText=noteCount;
+
+  const body=document.getElementById('defectorsBody');
+  if(!active.length){
+    body.innerHTML=`<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--muted);">No active defectors right now.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML=active.map(m=>{
+    const status=SaccoLogic.getDefectorStatus(m,state.columns,state.payments);
+    return `<tr>
+      <td><strong>${esc(m.name)}</strong><br><small style="color:var(--muted);">${esc(m.phone)}</small></td>
+      <td style="font-weight:700;color:var(--danger);">${status.missedCount}</td>
+      <td><span class="defector-badge">⚠ Defector</span></td>
+      <td><textarea id="defector-note-${m.id}" class="defector-note" style="min-height:70px;">${esc(m.defectionNote||'')}</textarea></td>
+      <td>
+        <div class="defector-actions">
+          <button class="btn btn-sm btn-blue" onclick="saveDefectorNote('${m.id}')">Save Note</button>
+          <button class="btn btn-sm btn-danger" onclick="resolveDefector('${m.id}')">Resolve</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function saveDefectorNote(mid){
+  const noteInput=document.getElementById(`defector-note-${mid}`);
+  if(!noteInput) return;
+  const member=state.members.find(m=>m.id===mid);
+  if(!member) return;
+  member.defectionNote=noteInput.value;
+  member.defectorResolved=false;
+  save();renderDefectors();toast('Note saved');
+}
+
+function resolveDefector(mid){
+  const member=state.members.find(m=>m.id===mid);
+  if(!member) return;
+  member.defectorResolved=true;
+  member.isDefector=false;
+  member.defectionNote=member.defectionNote||'Resolved.';
+  save();renderDefectors();renderTable();renderPayout();renderLoans();toast('Defector resolved');
+}
+
+function clearAllDefectors(){
+  state.members.forEach(m=>{
+    m.defectorResolved=true;
+    m.isDefector=false;
+    m.defectionNote=m.defectionNote||'Resolved.';
+  });
+  save();renderDefectors();renderTable();renderPayout();renderLoans();toast('All defectors resolved');
 }
 
 function renderSavings(){
@@ -837,6 +935,7 @@ function togglePaid(mid,cid,checked){
   payment.missed=!checked;
   const member=state.members.find(m=>m.id===mid);
   if(member){
+    member.defectorResolved=false;
     if(!checked){
       member.isDefector=true;
       if(!member.defectionNote) member.defectionNote='Missed payment.';
@@ -845,7 +944,7 @@ function togglePaid(mid,cid,checked){
       member.isDefector=hasMissed;
     }
   }
-  save();renderTable();
+  save();renderTable();renderDefectors();renderPayout();renderLoans();
 }
 function setAmt(mid,cid,val){getP(mid,cid).amount=parseFloat(val)||0;save();renderTable();}
 
@@ -857,7 +956,7 @@ function saveMember(){
     const m=state.members.find(x=>x.id===editingMemberId);
     m.name=name;m.phone=phone;ensureMemberMeta(m);
   } else {
-    state.members.push({id:'m'+nextMid++,name,phone,isDefector:false,defectionNote:''});
+    state.members.push({id:'m'+nextMid++,name,phone,isDefector:false,defectionNote:'',defectorResolved:false});
   }
   closeModal('memberModal');save();renderTable();toast('Member saved');
 }
@@ -924,6 +1023,7 @@ window.onload=()=>{
   document.getElementById('groupName').value=state.groupName||'';
   document.getElementById('groupName').oninput=(e)=>{state.groupName=e.target.value;save();};
   renderTable();
+  renderDefectors();
 };
 </script>
 </body>
