@@ -3,77 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>createsacco — Business Logic Demo</title>
-  <style>
-    :root {
-      --bg1: #0f172a;
-      --bg2: #0ea5e9;
-      --accent: #f97316;
-      --text: #f8fafc;
-    }
-    html,body{height:100%;margin:0}
-    body{
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
-      background: linear-gradient(135deg,var(--bg1),var(--bg2));
-      color:var(--text);
-    }
-    .card{
-      width:clamp(280px,60vw,800px);
-      background: rgba(255,255,255,0.04);
-      border-radius:12px;
-      padding:28px;
-      box-shadow: 0 10px 30px rgba(2,6,23,0.6);
-      backdrop-filter: blur(6px);
-      text-align:center;
-    }
-    h1{margin:0 0 8px;font-size:1.6rem}
-    p{margin:0 0 16px;color:rgba(248,250,252,0.9)}
-    .badge{
-      display:inline-block;padding:6px 10px;border-radius:999px;background:var(--accent);color:#fff;font-weight:600;margin-bottom:12px
-    }
-    .commit{
-      font-size:0.85rem;color:rgba(248,250,252,0.8);word-break:break-all
-    }
-    .colors{display:flex;gap:8px;justify-content:center;margin-top:18px}
-    .swatch{width:48px;height:48px;border-radius:8px;box-shadow:0 4px 10px rgba(2,6,23,0.6);border:2px solid rgba(255,255,255,0.06)}
-    .btn{margin-top:18px;background:transparent;border:2px solid rgba(255,255,255,0.12);color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
-  </style>
+  <title>createsacco</title>
+  <style>body{font-family:system-ui,Arial,sans-serif;margin:40px;color:#111}p{max-width:720px}</style>
 </head>
 <body>
-  <div class="card">
-    <div class="badge">main (pages demo)</div>
-    <h1>Business logic modules added</h1>
-    <p>This demo page is a visual confirmation that the sacco/business-logic branch contains new changes. The page background and color swatches visually indicate the commit.</p>
-    <div class="commit">Commit: <a href="https://github.com/Ayzac1802/createsacco/commit/ca8176df68bf38d9ed3c96eccee9a221fab81919" target="_blank" rel="noreferrer" style="color:inherit;opacity:.95">ca8176df</a></div>
-
-    <div class="colors" aria-hidden="true">
-      <div class="swatch" style="background:#0f172a"></div>
-      <div class="swatch" style="background:#0ea5e9"></div>
-      <div class="swatch" style="background:#f97316"></div>
-    </div>
-
-    <button class="btn" id="toggle">Toggle palette</button>
-
-    <p style="margin-top:12px;color:rgba(248,250,252,0.75)">If you want this live on GitHub Pages, ensure Pages source is set to the main branch or copy this file to the branch configured for Pages in repository settings.</p>
-  </div>
-
-  <script>
-    const palettes = [
-      ["#0f172a","#0ea5e9","#f97316"],
-      ["#042a2b","#06b6d4","#f43f5e"],
-      ["#111827","#a78bfa","#10b981"]
-    ];
-    let i = 0;
-    document.getElementById('toggle').addEventListener('click', () => {
-      i = (i + 1) % palettes.length;
-      const [bg1, bg2, accent] = palettes[i];
-      document.documentElement.style.setProperty('--bg1', bg1);
-      document.documentElement.style.setProperty('--bg2', bg2);
-      document.documentElement.style.setProperty('--accent', accent);
-    });
-  </script>
+  <h1>createsacco</h1>
+  <p>The demo page has been removed. This repository now contains the SACCO business logic modules under the <code>sacco/</code> folder. Continue development in the <code>sacco/</code> directory or open the <code>sacco/business-logic</code> branch to review the module files.</p>
+  <p>If you want this repository to serve a site via GitHub Pages, add an index.html or set the Pages source to another branch/folder.</p>
 </body>
 </html>
